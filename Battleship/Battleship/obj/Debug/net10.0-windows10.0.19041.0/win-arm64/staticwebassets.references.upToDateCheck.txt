@@ -1,2 +1,0 @@
-C:\code\blgorman_github\MauiBattleship\Battleship\Battleship.Shared\obj\Debug\net10.0\staticwebassets.build.json
-C:\code\blgorman_github\MauiBattleship\Battleship\Battleship.Shared\obj\Debug\net10.0\staticwebassets.build.json

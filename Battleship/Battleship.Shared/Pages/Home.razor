@@ -22,6 +22,15 @@
                 }
             }
         </div>
+        <div class="fleet-status" aria-label="Your fleet status">
+            <h3>Your ships (@ShipsAfloat(_playerFleet) afloat)</h3>
+            <ul>
+                @foreach (var ship in _playerFleet)
+                {
+                    <li class="@GetShipStatusClass(ship)">Length @ship.Length - @(ship.IsSunk ? "Sunk" : "Afloat")</li>
+                }
+            </ul>
+        </div>
     </div>
     <div class="board-wrapper">
         <h2>Enemy Waters</h2>
@@ -36,6 +45,15 @@
                 }
             }
         </div>
+        <div class="fleet-status" aria-label="Enemy fleet status">
+            <h3>Computer ships (@ShipsAfloat(_computerFleet) afloat)</h3>
+            <ul>
+                @foreach (var ship in _computerFleet)
+                {
+                    <li class="@GetShipStatusClass(ship)">Length @ship.Length - @(ship.IsSunk ? "Sunk" : "Afloat")</li>
+                }
+            </ul>
+        </div>
     </div>
 </div>
 
@@ -46,6 +64,8 @@
 
     private CellState[,] _playerBoard = new CellState[BoardSize, BoardSize];
     private CellState[,] _computerBoard = new CellState[BoardSize, BoardSize];
+    private List<Ship> _playerFleet = new();
+    private List<Ship> _computerFleet = new();
     private readonly HashSet<(int Row, int Col)> _computerShots = new();
 
     private bool playerTurn = true;
@@ -66,12 +86,14 @@
         playerTurn = true;
         statusMessage = "Take your shot!";
 
-        PlaceFleet(_playerBoard);
-        PlaceFleet(_computerBoard);
+        _playerFleet = PlaceFleet(_playerBoard);
+        _computerFleet = PlaceFleet(_computerBoard);
     }
 
-    private void PlaceFleet(CellState[,] board)
+    private List<Ship> PlaceFleet(CellState[,] board)
     {
+        var fleet = new List<Ship>();
+
         foreach (var ship in _shipLengths)
         {
             var placed = false;
@@ -83,17 +105,22 @@
 
                 if (CanPlaceShip(board, ship, row, col, horizontal))
                 {
+                    var coordinates = new List<(int Row, int Col)>();
                     for (var i = 0; i < ship; i++)
                     {
                         var r = horizontal ? row : row + i;
                         var c = horizontal ? col + i : col;
                         board[r, c] = CellState.Ship;
+                        coordinates.Add((r, c));
                     }
 
+                    fleet.Add(new Ship(ship, coordinates));
                     placed = true;
                 }
             }
         }
+
+        return fleet;
     }
 
     private static bool CanPlaceShip(CellState[,] board, int length, int row, int col, bool horizontal)
@@ -112,7 +139,7 @@
         return true;
     }
 
-    private void FireAt(int row, int col)
+    private async Task FireAt(int row, int col)
     {
         if (gameOver || !playerTurn)
         {
@@ -135,9 +162,14 @@
         if (cell == CellState.Ship)
         {
             _computerBoard[row, col] = CellState.Hit;
-            statusMessage = "Direct hit!";
 
-            if (!HasShipsRemaining(_computerBoard))
+            var ship = _computerFleet.First(s => s.Occupies(row, col));
+            ship.RegisterHit(row, col);
+            statusMessage = ship.IsSunk
+                ? $"HIT: You sank the computer's length {ship.Length} ship!"
+                : "HIT: Direct hit!";
+
+            if (!HasShipsRemaining(_computerFleet))
             {
                 gameOver = true;
                 statusMessage = "You sank the computer's fleet!";
@@ -147,19 +179,21 @@
         else
         {
             _computerBoard[row, col] = CellState.Miss;
-            statusMessage = "Splash... that was a miss.";
+            statusMessage = "MISS: Splash... that was a miss.";
         }
 
         playerTurn = false;
-        ComputerTurn();
+        await ComputerTurn();
     }
 
-    private void ComputerTurn()
+    private async Task ComputerTurn()
     {
         if (gameOver)
         {
             return;
         }
+
+        await Task.Delay(600);
 
         var shotTaken = false;
         while (!shotTaken)
@@ -177,9 +211,20 @@
             if (_playerBoard[row, col] == CellState.Ship)
             {
                 _playerBoard[row, col] = CellState.Hit;
-                statusMessage = $"The computer hit your ship at {ConvertToCoordinate(row, col)}.";
+                var ship = _playerFleet.First(s => s.Occupies(row, col));
+                ship.RegisterHit(row, col);
+                var hitMessage = $"HIT: The computer hit your ship at {ConvertToCoordinate(row, col)}.";
 
-                if (!HasShipsRemaining(_playerBoard))
+                if (ship.IsSunk)
+                {
+                    statusMessage = $"HIT: The computer sank your length {ship.Length} ship at {ConvertToCoordinate(row, col)}.";
+                }
+                else
+                {
+                    statusMessage = hitMessage;
+                }
+
+                if (!HasShipsRemaining(_playerFleet))
                 {
                     gameOver = true;
                     statusMessage = "The computer sank your fleet!";
@@ -189,7 +234,7 @@
             else
             {
                 _playerBoard[row, col] = CellState.Miss;
-                statusMessage = $"The computer missed at {ConvertToCoordinate(row, col)}.";
+                statusMessage = $"MISS: The computer missed at {ConvertToCoordinate(row, col)}.";
             }
 
             shotTaken = true;
@@ -198,17 +243,9 @@
         playerTurn = true;
     }
 
-    private static bool HasShipsRemaining(CellState[,] board)
+    private static bool HasShipsRemaining(IEnumerable<Ship> fleet)
     {
-        foreach (var cell in board)
-        {
-            if (cell == CellState.Ship)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return fleet.Any(ship => !ship.IsSunk);
     }
 
     private static string ConvertToCoordinate(int row, int col)
@@ -258,11 +295,40 @@
         };
     }
 
+    private static int ShipsAfloat(IEnumerable<Ship> fleet) => fleet.Count(ship => !ship.IsSunk);
+
+    private static string GetShipStatusClass(Ship ship) => ship.IsSunk ? "ship-sunk" : "ship-afloat";
+
     private enum CellState
     {
         Empty,
         Ship,
         Hit,
         Miss
+    }
+
+    private class Ship
+    {
+        private readonly HashSet<(int Row, int Col)> _coordinates;
+        private readonly HashSet<(int Row, int Col)> _hits = new();
+
+        public Ship(int length, IEnumerable<(int Row, int Col)> coordinates)
+        {
+            Length = length;
+            _coordinates = new HashSet<(int Row, int Col)>(coordinates);
+        }
+
+        public int Length { get; }
+        public bool IsSunk => _hits.Count >= Length;
+
+        public bool Occupies(int row, int col) => _coordinates.Contains((row, col));
+
+        public void RegisterHit(int row, int col)
+        {
+            if (Occupies(row, col))
+            {
+                _hits.Add((row, col));
+            }
+        }
     }
 }

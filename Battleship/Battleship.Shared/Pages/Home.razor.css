@@ -69,6 +69,46 @@ h1 {
     border-color: #6c757d;
 }
 
+.fleet-status {
+    margin-top: 0.75rem;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 0.75rem;
+}
+
+.fleet-status h3 {
+    font-size: 1rem;
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+}
+
+.fleet-status ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.25rem 0.75rem;
+}
+
+.fleet-status li {
+    font-size: 0.95rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+.fleet-status .ship-afloat {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.fleet-status .ship-sunk {
+    background: #f8d7da;
+    color: #842029;
+    text-decoration: line-through;
+}
+
 @media (max-width: 640px) {
     .controls {
         flex-direction: column;

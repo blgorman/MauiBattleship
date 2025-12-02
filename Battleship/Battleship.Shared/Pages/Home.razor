@@ -117,6 +117,12 @@
             return;
         }
 
+        if (row < 0 || row >= BoardSize || col < 0 || col >= BoardSize)
+        {
+            statusMessage = "That shot is outside the board. Please pick a spot in the 10x10 grid.";
+            return;
+        }
+
         var cell = _computerBoard[row, col];
         if (cell is CellState.Hit or CellState.Miss)
         {

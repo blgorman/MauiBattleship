@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Battleship/Battleship.Shared/Battleship.Shared.csproj" />
+  <Project Path="Battleship/Battleship.Web/Battleship.Web.csproj" />
+  <Project Path="Battleship/Battleship/Battleship.csproj" />
+</Solution>

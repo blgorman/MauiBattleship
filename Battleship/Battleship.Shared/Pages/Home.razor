@@ -28,9 +28,11 @@
         <div class="board" aria-label="Computer board">
             @for (var row = 0; row < BoardSize; row++)
             {
+                var rowIndex = row;
                 @for (var col = 0; col < BoardSize; col++)
                 {
-                    <button class="cell @GetComputerCellClass(row, col)" type="button" title="@DescribeComputerCell(row, col)" @onclick="() => FireAt(row, col)"></button>
+                    var colIndex = col;
+                    <button class="cell @GetComputerCellClass(rowIndex, colIndex)" type="button" title="@DescribeComputerCell(rowIndex, colIndex)" @onclick="() => FireAt(rowIndex, colIndex)"></button>
                 }
             }
         </div>
@@ -114,6 +116,12 @@
     {
         if (gameOver || !playerTurn)
         {
+            return;
+        }
+
+        if (row < 0 || row >= BoardSize || col < 0 || col >= BoardSize)
+        {
+            statusMessage = "That shot is outside the board. Please pick a spot in the 10x10 grid.";
             return;
         }
 

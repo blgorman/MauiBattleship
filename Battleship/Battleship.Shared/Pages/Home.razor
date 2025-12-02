@@ -1,14 +1,260 @@
-﻿@page "/"
-@using Battleship.Shared.Services
-@inject IFormFactor FormFactor
+@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Battleship</PageTitle>
 
-<h1>Hello, world!</h1>
+<h1>Battleship</h1>
+<p class="status">@statusMessage</p>
 
-Welcome to your new app running on <em>@factor</em> using <em>@platform</em>.
+<div class="controls">
+    <button class="btn btn-primary" type="button" @onclick="ResetGame">Restart</button>
+    <span class="turn">@(gameOver ? "Game over" : playerTurn ? "Your turn" : "Computer turn")</span>
+</div>
+
+<div class="boards">
+    <div class="board-wrapper">
+        <h2>Your Fleet</h2>
+        <div class="board" aria-label="Player board">
+            @for (var row = 0; row < BoardSize; row++)
+            {
+                @for (var col = 0; col < BoardSize; col++)
+                {
+                    <button class="cell @GetPlayerCellClass(row, col)" disabled title="@DescribePlayerCell(row, col)"></button>
+                }
+            }
+        </div>
+    </div>
+    <div class="board-wrapper">
+        <h2>Enemy Waters</h2>
+        <div class="board" aria-label="Computer board">
+            @for (var row = 0; row < BoardSize; row++)
+            {
+                @for (var col = 0; col < BoardSize; col++)
+                {
+                    <button class="cell @GetComputerCellClass(row, col)" type="button" title="@DescribeComputerCell(row, col)" @onclick="() => FireAt(row, col)"></button>
+                }
+            }
+        </div>
+    </div>
+</div>
 
 @code {
-    private string factor => FormFactor.GetFormFactor();
-    private string platform => FormFactor.GetPlatform();
+    private const int BoardSize = 10;
+    private readonly int[] _shipLengths = { 5, 4, 3, 3, 2 };
+    private readonly Random _random = new();
+
+    private CellState[,] _playerBoard = new CellState[BoardSize, BoardSize];
+    private CellState[,] _computerBoard = new CellState[BoardSize, BoardSize];
+    private readonly HashSet<(int Row, int Col)> _computerShots = new();
+
+    private bool playerTurn = true;
+    private bool gameOver;
+    private string statusMessage = "Take your shot!";
+
+    protected override void OnInitialized()
+    {
+        ResetGame();
+    }
+
+    private void ResetGame()
+    {
+        _playerBoard = new CellState[BoardSize, BoardSize];
+        _computerBoard = new CellState[BoardSize, BoardSize];
+        _computerShots.Clear();
+        gameOver = false;
+        playerTurn = true;
+        statusMessage = "Take your shot!";
+
+        PlaceFleet(_playerBoard);
+        PlaceFleet(_computerBoard);
+    }
+
+    private void PlaceFleet(CellState[,] board)
+    {
+        foreach (var ship in _shipLengths)
+        {
+            var placed = false;
+            while (!placed)
+            {
+                var horizontal = _random.Next(2) == 0;
+                var row = horizontal ? _random.Next(BoardSize) : _random.Next(BoardSize - ship + 1);
+                var col = horizontal ? _random.Next(BoardSize - ship + 1) : _random.Next(BoardSize);
+
+                if (CanPlaceShip(board, ship, row, col, horizontal))
+                {
+                    for (var i = 0; i < ship; i++)
+                    {
+                        var r = horizontal ? row : row + i;
+                        var c = horizontal ? col + i : col;
+                        board[r, c] = CellState.Ship;
+                    }
+
+                    placed = true;
+                }
+            }
+        }
+    }
+
+    private static bool CanPlaceShip(CellState[,] board, int length, int row, int col, bool horizontal)
+    {
+        for (var i = 0; i < length; i++)
+        {
+            var r = horizontal ? row : row + i;
+            var c = horizontal ? col + i : col;
+
+            if (board[r, c] != CellState.Empty)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void FireAt(int row, int col)
+    {
+        if (gameOver || !playerTurn)
+        {
+            return;
+        }
+
+        var cell = _computerBoard[row, col];
+        if (cell is CellState.Hit or CellState.Miss)
+        {
+            statusMessage = "You already checked that coordinate.";
+            return;
+        }
+
+        if (cell == CellState.Ship)
+        {
+            _computerBoard[row, col] = CellState.Hit;
+            statusMessage = "Direct hit!";
+
+            if (!HasShipsRemaining(_computerBoard))
+            {
+                gameOver = true;
+                statusMessage = "You sank the computer's fleet!";
+                return;
+            }
+        }
+        else
+        {
+            _computerBoard[row, col] = CellState.Miss;
+            statusMessage = "Splash... that was a miss.";
+        }
+
+        playerTurn = false;
+        ComputerTurn();
+    }
+
+    private void ComputerTurn()
+    {
+        if (gameOver)
+        {
+            return;
+        }
+
+        var shotTaken = false;
+        while (!shotTaken)
+        {
+            var row = _random.Next(BoardSize);
+            var col = _random.Next(BoardSize);
+
+            if (_computerShots.Contains((row, col)))
+            {
+                continue;
+            }
+
+            _computerShots.Add((row, col));
+
+            if (_playerBoard[row, col] == CellState.Ship)
+            {
+                _playerBoard[row, col] = CellState.Hit;
+                statusMessage = $"The computer hit your ship at {ConvertToCoordinate(row, col)}.";
+
+                if (!HasShipsRemaining(_playerBoard))
+                {
+                    gameOver = true;
+                    statusMessage = "The computer sank your fleet!";
+                    return;
+                }
+            }
+            else
+            {
+                _playerBoard[row, col] = CellState.Miss;
+                statusMessage = $"The computer missed at {ConvertToCoordinate(row, col)}.";
+            }
+
+            shotTaken = true;
+        }
+
+        playerTurn = true;
+    }
+
+    private static bool HasShipsRemaining(CellState[,] board)
+    {
+        foreach (var cell in board)
+        {
+            if (cell == CellState.Ship)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string ConvertToCoordinate(int row, int col)
+    {
+        return $"{(char)('A' + row)}{col + 1}";
+    }
+
+    private string GetPlayerCellClass(int row, int col)
+    {
+        return _playerBoard[row, col] switch
+        {
+            CellState.Ship => "ship",
+            CellState.Hit => "hit",
+            CellState.Miss => "miss",
+            _ => "sea"
+        };
+    }
+
+    private string GetComputerCellClass(int row, int col)
+    {
+        return _computerBoard[row, col] switch
+        {
+            CellState.Hit => "hit",
+            CellState.Miss => "miss",
+            _ => "unknown"
+        };
+    }
+
+    private string DescribePlayerCell(int row, int col)
+    {
+        return _playerBoard[row, col] switch
+        {
+            CellState.Ship => $"Ship at {ConvertToCoordinate(row, col)}",
+            CellState.Hit => $"Your ship was hit at {ConvertToCoordinate(row, col)}",
+            CellState.Miss => $"Computer missed at {ConvertToCoordinate(row, col)}",
+            _ => $"Open water at {ConvertToCoordinate(row, col)}"
+        };
+    }
+
+    private string DescribeComputerCell(int row, int col)
+    {
+        return _computerBoard[row, col] switch
+        {
+            CellState.Hit => $"Hit at {ConvertToCoordinate(row, col)}",
+            CellState.Miss => $"Miss at {ConvertToCoordinate(row, col)}",
+            _ => $"Launch at {ConvertToCoordinate(row, col)}"
+        };
+    }
+
+    private enum CellState
+    {
+        Empty,
+        Ship,
+        Hit,
+        Miss
+    }
 }
